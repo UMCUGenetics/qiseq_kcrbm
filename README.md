@@ -11,7 +11,7 @@ R code for Kernel Convolved Rule Based Mapping (KC-RBM) as described by De Jong 
 - data: sample MuLV and SB transposon data for use with the sample program
 - r: KC-RBM scripts, and sample script for running KC-RBM
 
-#### Ouput
+#### Output
 KC-RBM returns a data.frame with the following columns:
 
 All fields in the original idata, and additional fields indicating for each insertion (or insertion cluster):
