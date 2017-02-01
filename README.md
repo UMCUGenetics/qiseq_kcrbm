@@ -4,6 +4,7 @@ R code for Kernel Convolved Rule Based Mapping (KC-RBM) as described by De Jong 
 # Getting started
 1. Make sure the packages biomaRt, BSgenome* of choice, and [CIMPL](https://github.com/NKI-CCB/cimpl/) v1.0 are installed.
 2. Execute the sample code in file 'prog.r' in directory 'r' to check if everything works.
+3. Adapt code to use your own input files and configurations.
 
 # Code documentation
 #### Directories
