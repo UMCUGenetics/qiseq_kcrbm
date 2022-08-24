@@ -905,9 +905,8 @@ preprocess <- function(idata,scale,orientation_homogeneity,rules) {
 		idata$ids <- idata$id
 		idata$n_insertions <- rep(1,nrow(idata))
 	} else {
-	
-		# library("BSgenome.Mmusculus.UCSC.mm9")
-	    suppressMessages(library(BSgenome.Mmusculus.UCSC.mm10))
+		
+		suppressMessages(library(BSgenome.Mmusculus.UCSC.mm10))
 		library(cimpl)
 
 		names(idata)[which(names(idata) == "base")] <- "location"
@@ -933,11 +932,6 @@ preprocess <- function(idata,scale,orientation_homogeneity,rules) {
 		cimpl@chromosomes <- gsub("chr","",cimpl@chromosomes)
 		cimpl@chromosomes[cimpl@chromosomes == "X"] <- "20"
 		cimpl@chromosomes[cimpl@chromosomes == "Y"] <- "21"
-	
-		# Remove local hop insertions
-		#write.csv(cimpl, file = "cimpl_all.csv")
-		#cimpl <- cimpl[cimpl$hop == FALSE,]
-		#write.csv(cimpl, file = "cimpl_nohop.csv")
 		
 		ncol <- 5
 		idata_cimpl <- matrix(NA,nrow=0,ncol=ncol)
@@ -950,12 +944,10 @@ preprocess <- function(idata,scale,orientation_homogeneity,rules) {
 			co <- cimpl@cimplObjects[[chr.idx]][[kw.idx]]
 			
 			idata.chr$hop <- co@data$hop
-			#idata.chr <- idata.chr[!idata.chr$hop,]
 			
 			peaks <- sapply(1:dim(idata.chr)[1],function(j){ # map each insertion to the nearest peak
 				which.min(abs(co@peaks$x - idata.chr$base[j]))
 			})
-			#print("derp")
 			L <- split(1:length(peaks),peaks)
 			idata_cimpl.chr <- unlist(sapply(L,function(l) {
 				sense <- which(idata.chr$ori[l] == 1 & !idata.chr$hop[l])
