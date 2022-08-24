@@ -70,7 +70,7 @@ kcrbm.gene <- function(
 			if (is.null(windows)) windows <- list(us=20000,ua=120000,ds=40000,da=5000)
 			if (is.null(scale)) scale <- 10000
 			if (is.null(orientation_homogeneity)) orientation_homogeneity <- 0.75
-		} else if (rules %in% c("SB")) {
+		} else if (rules %in% c("SB","PB")) {
 			if (is.null(windows)) windows <- list(us=20000,ua=10000,ds=25000,da=5000)
 			if (is.null(scale)) scale <- 2000
 			if (is.null(orientation_homogeneity)) orientation_homogeneity <- 0.75		
@@ -120,7 +120,7 @@ kcrbm.gene <- function(
 	cat(sprintf("\tscale:   %i\n", scale))
 	cat(sprintf("\torientation_homogeneity:   %g\n\n", orientation_homogeneity))
 	
-	idata <- preprocess(idata,scale,orientation_homogeneity)
+	idata <- preprocess(idata,scale,orientation_homogeneity,rules)
 
 	edata <- edata[,which(colnames(edata) %in% c("chr","gstart","gend","strand","geneid","gss","gts"))]
 	edata <- unique(edata,MARGIN=1)
@@ -898,7 +898,7 @@ withWarnings <- function(expression) {
 	)
 } 
 
-preprocess <- function(idata,scale,orientation_homogeneity) {
+preprocess <- function(idata,scale,orientation_homogeneity,rules) {
 	if (scale == 0) {
 		idata$clusterpeak <- idata$base
 		idata$clusterorientation <- idata$ori
@@ -906,20 +906,22 @@ preprocess <- function(idata,scale,orientation_homogeneity) {
 		idata$n_insertions <- rep(1,nrow(idata))
 	} else {
 	
-		library("BSgenome.Mmusculus.UCSC.mm9")
+		# library("BSgenome.Mmusculus.UCSC.mm9")
+	    suppressMessages(library(BSgenome.Mmusculus.UCSC.mm10))
 		library(cimpl)
 
 		names(idata)[which(names(idata) == "base")] <- "location"
-		idata$chr <- sprintf("%i",idata$chr)
+		#idata$chr <- sprintf("%i",idata$chr)
 		idata$chr[idata$chr == "20"] <- "X"
 		idata$chr[idata$chr == "21"] <- "Y"
 		idata$chr <- sprintf("chr%s",idata$chr)
 		cimpl <- doCimplAnalysis(
 			data = idata,
 			scales = scale,
-			n_iterations = 1, # 1000
-			system = "MuLV",
+			n_iterations = 1, # 1000 
 			BSgenome = Mmusculus,
+			system = rules, # "MuLV", # Wrong system?
+			lhc.method = 'exclude', # Added LHC
 			verbose = FALSE
 		)
 		names(idata)[which(names(idata) == "location")] <- "base"
@@ -932,31 +934,43 @@ preprocess <- function(idata,scale,orientation_homogeneity) {
 		cimpl@chromosomes[cimpl@chromosomes == "X"] <- "20"
 		cimpl@chromosomes[cimpl@chromosomes == "Y"] <- "21"
 	
-		ncol <- 4
+		# Remove local hop insertions
+		#write.csv(cimpl, file = "cimpl_all.csv")
+		#cimpl <- cimpl[cimpl$hop == FALSE,]
+		#write.csv(cimpl, file = "cimpl_nohop.csv")
+		
+		ncol <- 5
 		idata_cimpl <- matrix(NA,nrow=0,ncol=ncol)
-		colnames(idata_cimpl) <- c("clusterpeak","clusterorientation","ids","n_insertions")
+		colnames(idata_cimpl) <- c("clusterpeak","clusterorientation","ids","n_insertions","n_nohop")
 		for (i in 1:length(unique(idata$chr))) {
 			chr <- unique(idata$chr)[i]
 			idata.chr <- idata[idata$chr == chr,]
 			chr.idx <- which(cimpl@chromosomes == as.character(chr))
 			kw.idx <- which(cimpl@scales == scale)
 			co <- cimpl@cimplObjects[[chr.idx]][[kw.idx]]
+			
+			idata.chr$hop <- co@data$hop
+			#idata.chr <- idata.chr[!idata.chr$hop,]
+			
 			peaks <- sapply(1:dim(idata.chr)[1],function(j){ # map each insertion to the nearest peak
 				which.min(abs(co@peaks$x - idata.chr$base[j]))
 			})
+			#print("derp")
 			L <- split(1:length(peaks),peaks)
 			idata_cimpl.chr <- unlist(sapply(L,function(l) {
-				sense <- which(idata.chr$ori[l] == 1)
-				antisense <- which(idata.chr$ori[l] == -1)
-				sense_fraction <- length(sense) / length(l)
-				antisense_fraction <- length(antisense) / length(l)
+				sense <- which(idata.chr$ori[l] == 1 & !idata.chr$hop[l])
+				antisense <- which(idata.chr$ori[l] == -1 & !idata.chr$hop[l])
+				length_l <- length(sense) + length(antisense)
+				sense_fraction <- length(sense) / length_l
+				antisense_fraction <- length(antisense) / length_l
 				ori <- if (sense_fraction >= orientation_homogeneity) { # should we cluster the insertions as sense?
 					peaklocus <- mean(idata.chr$base[l])
 					rep(c(
 						peaklocus,
 						1,
 						paste(idata.chr$id[l],collapse="|"),
-						length(l)
+						length(l),
+						length_l
 					),length(l))
 				} else if (antisense_fraction >= orientation_homogeneity) { # should we cluster the insertions as antisense?
 					peaklocus <- mean(idata.chr$base[l])
@@ -964,7 +978,8 @@ preprocess <- function(idata,scale,orientation_homogeneity) {
 						peaklocus,
 						-1,
 						paste(idata.chr$id[l],collapse="|"),
-						length(l)
+						length(l),
+						length_l
 					),length(l))
 				} else { # cluster is orientation-wise too heterogeneous: cluster orientations separately
 					peaklocus_sense <- mean(idata.chr$base[l[sense]])
@@ -976,10 +991,12 @@ preprocess <- function(idata,scale,orientation_homogeneity) {
 					res[(sense-1)*ncol+2] <- rep(1,lsense)
 					res[(sense-1)*ncol+3] <- rep(paste(idata.chr$id[l[sense]],collapse="|"),lsense)
 					res[(sense-1)*ncol+4] <- rep(lsense,lsense)
+					res[(sense-1)*ncol+5] <- rep(length(which(!idata.chr$hop[l[sense]])),lsense)
 					res[(antisense-1)*ncol+1] <- rep(peaklocus_antisense,lantisense)
 					res[(antisense-1)*ncol+2] <- rep(-1,lantisense)
 					res[(antisense-1)*ncol+3] <- rep(paste(idata.chr$id[l[antisense]],collapse="|"),lantisense)
 					res[(antisense-1)*ncol+4] <- rep(lantisense,lantisense)
+					res[(antisense-1)*ncol+5] <- rep(length(which(!idata.chr$hop[l[antisense]])),lantisense)
 					res
 				}
 			}))
@@ -990,6 +1007,7 @@ preprocess <- function(idata,scale,orientation_homogeneity) {
 		idata_cimpl[,1] <- as.numeric(idata_cimpl[,1])
 		idata_cimpl[,2] <- round(as.numeric(idata_cimpl[,2]))
 		idata_cimpl[,4] <- as.numeric(idata_cimpl[,4])
+		
 		idata <- cbind(idata,idata_cimpl)
 	
 		# first sort on chromosome number

@@ -40,7 +40,7 @@ preprocessEnsemblData <- function(ensembl_data,dataset="mmusculus") {
 			mart <- useMart(
 				"ENSEMBL_MART_ENSEMBL", 
 				dataset = sprintf("%s_gene_ensembl",dataset), 
-				host = "www.ensembl.org"
+				host = 'http://nov2020.archive.ensembl.org' # "www.ensembl.org" # Latest version is mm11, we use mm10
 			)
 			cols <- c("chr", "tstart", "tend", "strand", "geneid", "transid", "estart","eend", 
 				"cstart", "cend","utr5start","utr5end","utr3start","utr3end","gstart","gend")
@@ -114,6 +114,7 @@ get_chrl <- function(genome="mm9") {
 	if (genome == "mm9") {
 		library("BSgenome.Mmusculus.UCSC.mm9")
 		GENOME <- Mmusculus
+		stop("mm9 call found")
 	}
 	chrs <- 1:which(seqnames(GENOME) == "chrY")
 	as.numeric(seqlengths(GENOME)[chrs])
